@@ -171,21 +171,37 @@
     </div>
 
     <script>
-        // --- CẤU HÌNH API GROQ (HOÀN TOÀN MIỄN PHÍ, SIÊU NHANH) ---
-        // Lấy API Key tại: https://console.groq.com/keys
-        const apiKey = "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"; 
-        const apiUrl = `https://api.groq.com/openai/v1/chat/completions`;
+        // =========================================================================
+        // CẤU HÌNH API THÔNG MINH (TỰ ĐỘNG NHẬN DIỆN MÔI TRƯỜNG CHẠY)
+        // =========================================================================
         
-        // ĐÃ SỬA LỖI 400: Cập nhật tên Model mới nhất của Groq (Model cũ đã bị Groq xóa)
-        const aiModel = "llama-3.3-70b-versatile"; 
+        // 1. Kiểm tra xem web đang chạy ở đâu
+        const currentDomain = window.location.hostname;
+        const isRealEnvironment = currentDomain.includes("github.io") || currentDomain.includes("localhost") || currentDomain === "127.0.0.1";
 
-        // --- STATE ---
+        let apiKey = "";
+        let apiUrl = "";
+
+        if (isRealEnvironment) {
+            // [A] NẾU CHẠY TRÊN GITHUB PAGES HOẶC LOCALHOST (Môi trường thực tế)
+            // Bắt buộc dùng Key thật của bạn và model công khai
+            apiKey = "AIzaSyA5HQYOrU1gAFBwpoHoAXq7zx7lyveumOc"; 
+            apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        } else {
+            // [B] NẾU CHẠY TRONG KHUNG "XEM TRƯỚC" CỦA GEMINI (Môi trường giả lập)
+            // Hệ thống nội bộ bắt buộc phải để Key trống và dùng model preview
+            apiKey = ""; 
+            apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        }
+
+        // =========================================================================
+        // STATE & LOGIC CHÍNH
+        // =========================================================================
         let currentCharacterName = "";
         let characterProfile = null; 
         let chatHistory = [];
         let isProcessing = false;
 
-        // --- DOM ELEMENTS ---
         const screens = {
             setup: document.getElementById('setup-screen'),
             loading: document.getElementById('loading-screen'),
@@ -212,7 +228,6 @@
             flaws: document.getElementById('profile-flaws')
         };
 
-        // --- EVENT LISTENERS ---
         elements.msgInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = (this.scrollHeight) + 'px';
@@ -235,10 +250,11 @@
             startInitializationProcess();
         });
 
-        // --- CORE LOGIC: GIAI ĐOẠN 1 (TẠO HỒ SƠ TÂM LÝ) ---
+        // --- GIAI ĐOẠN 1: TẠO HỒ SƠ ---
         async function startInitializationProcess() {
-            if (!apiKey || apiKey.includes("DÁN_API_KEY")) {
-                showError("Bạn chưa cấu hình API Key! Vui lòng dán API Key vào file code.");
+            // Bắt lỗi rỗng Key chỉ khi ở môi trường thực tế
+            if (isRealEnvironment && (!apiKey || apiKey === "")) {
+                showError("Lỗi cấu hình API Key trên Github/Localhost.");
                 return;
             }
 
@@ -247,11 +263,11 @@
             
             try {
                 elements.status.textContent = "Đang trích xuất dữ liệu cốt truyện & tâm lý...";
-                addLog("Gửi yêu cầu xây dựng hồ sơ...");
+                addLog("Gửi yêu cầu xây dựng hồ sơ qua Google Gemini...");
                 
                 const profilePrompt = `Bạn là một hệ thống phân tích tâm lý học và bách khoa toàn thư. 
 Vui lòng phân tích nhân vật hoặc cá nhân mang tên: "${currentCharacterName}". 
-BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code block, không giải thích thêm), với cấu trúc sau:
+TRẢ VỀ KẾT QUẢ DƯỚI DẠNG CHUẨN JSON VỚI CẤU TRÚC SAU (không dùng markdown code block, chỉ trả về chuỗi JSON thuần):
 {
     "name": "Tên đầy đủ và danh xưng chuẩn",
     "core_background": "Tóm tắt ngắn gọn tiểu sử, vị thế, xuất thân (max 50 chữ)",
@@ -263,25 +279,21 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
 
                 const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: aiModel,
-                        messages: [{ role: "user", content: profilePrompt }]
+                        contents: [{ parts: [{ text: profilePrompt }] }],
+                        generationConfig: { responseMimeType: "application/json" }
                     })
                 });
 
                 const data = await response.json();
                 
-                if (data.choices && data.choices.length > 0) {
-                    const rawJsonText = data.choices[0].message.content;
+                if (data.candidates && data.candidates[0].content) {
+                    const rawJsonText = data.candidates[0].content.parts[0].text;
                     addLog("Đã nhận phản hồi, đang biên dịch dữ liệu tâm lý...");
                     
                     try {
                         let cleanJson = rawJsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                        // Tìm vị trí của dấu ngoặc nhọn đầu và cuối để tránh rác sinh ra từ AI
                         const startIndex = cleanJson.indexOf('{');
                         const endIndex = cleanJson.lastIndexOf('}');
                         if(startIndex !== -1 && endIndex !== -1) {
@@ -297,10 +309,10 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
                         setTimeout(startChatPhase, 1000);
 
                     } catch (parseError) {
-                        throw new Error("Mô hình miễn phí bị quá tải hoặc phản hồi sai định dạng JSON. Vui lòng thử lại.");
+                        throw new Error("Không thể phân tích cấu trúc tâm lý nhân vật này. Tên có thể không tồn tại hoặc AI trả về sai định dạng.");
                     }
                 } else {
-                    throw new Error("Lỗi máy chủ AI OpenRouter.");
+                    throw new Error("Lỗi máy chủ AI Gemini.");
                 }
 
             } catch (error) {
@@ -309,7 +321,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
             }
         }
 
-        // --- CẬP NHẬT GIAO DIỆN HỒ SƠ ---
+        // --- CẬP NHẬT UI ---
         function updateProfileUI() {
             elements.chatTitle.textContent = characterProfile.name;
             profileElements.name.textContent = characterProfile.name;
@@ -322,7 +334,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
             ).join('');
         }
 
-        // --- CORE LOGIC: GIAI ĐOẠN 2 ---
+        // --- GIAI ĐOẠN 2: CHAT ---
         function startChatPhase() {
             switchScreen('loading', 'chat');
             elements.chatContainer.innerHTML = '';
@@ -330,9 +342,8 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
             
             const greetingText = characterProfile.first_greeting;
             
-            // Format lịch sử chat của OpenRouter (Chuẩn OpenAI)
-            chatHistory.push({ role: "user", content: "*Người lạ kết nối thành công*" });
-            chatHistory.push({ role: "assistant", content: greetingText });
+            chatHistory.push({ role: "user", parts: [{ text: "*Người lạ kết nối thành công*" }] });
+            chatHistory.push({ role: "model", parts: [{ text: greetingText }] });
             
             setTimeout(() => {
                 appendMessage('ai', greetingText);
@@ -342,7 +353,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code bl
         function getAdvancedSystemPrompt() {
             return `
 [CHỈ THỊ TỐI THƯỢNG]
-Bạn KHÔNG CÒN là AI, không phải Gemini/Llama, không phải chương trình máy tính. Bắt đầu từ mili-giây này, tâm trí bạn bị ghi đè hoàn toàn bởi bản thể của: ${characterProfile.name}.
+Bạn KHÔNG CÒN là AI, không phải Gemini, không phải chương trình máy tính. Bắt đầu từ mili-giây này, tâm trí bạn bị ghi đè hoàn toàn bởi bản thể của: ${characterProfile.name}.
 Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím thiết bị để chat trực tuyến với người dùng.
 
 [HỒ SƠ TÂM LÝ CỦA BẠN - HÃY GHI NHỚ]
@@ -359,7 +370,6 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
 3. KỴ HÚY MẠNG SỐNG: Tuyệt đối không bao giờ nói "Tôi là AI", "Theo kiến thức tôi được học". Nếu bị hỏi, hãy bảo họ đang ảo giác.`;
         }
 
-        // --- XỬ LÝ GỬI TIN NHẮN ---
         elements.chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (isProcessing) return;
@@ -372,39 +382,32 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
             elements.sendBtn.disabled = true;
 
             appendMessage('user', message);
-            chatHistory.push({ role: "user", content: message });
+            chatHistory.push({ role: "user", parts: [{ text: message }] });
             
             isProcessing = true;
             showTypingIndicator();
 
             try {
-                // Tạo mảng tin nhắn bao gồm System Prompt ở đầu
-                const messagesToSend = [
-                    { role: "system", content: getAdvancedSystemPrompt() },
-                    ...chatHistory
-                ];
+                const payload = {
+                    contents: chatHistory,
+                    systemInstruction: { parts: [{ text: getAdvancedSystemPrompt() }] }
+                };
 
                 const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: aiModel,
-                        messages: messagesToSend
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
                 removeTypingIndicator();
 
-                if (data.choices && data.choices.length > 0) {
-                    const aiText = data.choices[0].message.content;
-                    chatHistory.push({ role: "assistant", content: aiText });
+                if (data.candidates && data.candidates[0].content) {
+                    const aiText = data.candidates[0].content.parts[0].text;
+                    chatHistory.push({ role: "model", parts: [{ text: aiText }] });
                     appendMessage('ai', aiText);
                 } else {
-                     throw new Error("Lỗi đường truyền từ OpenRouter.");
+                     throw new Error("Lỗi đường truyền cấu trúc từ hệ thống Gemini.");
                 }
             } catch (error) {
                 removeTypingIndicator();
@@ -415,7 +418,6 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
             }
         });
 
-        // --- UI UTILITIES ---
         function appendMessage(sender, text) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'} w-full opacity-0 transform translate-y-4 transition-all duration-300`;
@@ -522,16 +524,14 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
                 try {
                     const response = await fetch(url, options);
                     if (!response.ok) {
-                        // Nâng cấp: Lấy chi tiết lỗi từ máy chủ để báo cáo rõ ràng hơn
                         let errorDetail = "";
                         try {
                             const errorJson = await response.json();
                             errorDetail = errorJson.error?.message || JSON.stringify(errorJson);
                         } catch(e) {}
 
-                        if(response.status === 401) throw new Error("API Key không hợp lệ.");
-                        if(response.status === 429) throw new Error("Mô hình miễn phí đang bị quá tải, đang thử lại...");
-                        if(response.status === 400) throw new Error(`Lỗi 400 (Dữ liệu sai hoặc Model không tồn tại): ${errorDetail}`);
+                        if(response.status === 403) throw new Error("Lỗi 403: API Key bị từ chối hoặc sai giới hạn Domain. Vui lòng check Google AI Studio.");
+                        if(response.status === 404) throw new Error(`Lỗi 404: Không tìm thấy Model. Chi tiết: ${errorDetail}`);
                         
                         throw new Error(`Lỗi từ máy chủ: ${response.status} - ${errorDetail}`);
                     }
