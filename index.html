@@ -171,16 +171,17 @@
     </div>
 
     <script>
-        // --- API CONFIG ---
-        // BƯỚC QUAN TRỌNG: HÃY TẠO 1 API KEY MỚI TINH VÀ DÁN VÀO ĐÂY (API CŨ CỦA BẠN ĐANG BỊ LỖI 403 TRÊN GITHUB)
-        const apiKey = "AIzaSyB-NON7813TFLNSB5ER0sEOQ1QgLEfa3Do";
+        // --- CẤU HÌNH API GROQ (HOÀN TOÀN MIỄN PHÍ, SIÊU NHANH) ---
+        // Lấy API Key tại: https://console.groq.com/keys
+        const apiKey = "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"; 
+        const apiUrl = `https://api.groq.com/openai/v1/chat/completions`;
         
-        // ĐÃ SỬA LỖI 404: Trở về model "gemini-1.5-flash" (Phiên bản public cực kỳ ổn định, chạy được mọi API Key)
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        // ĐÃ SỬA LỖI 400: Cập nhật tên Model mới nhất của Groq (Model cũ đã bị Groq xóa)
+        const aiModel = "llama-3.3-70b-versatile"; 
 
         // --- STATE ---
         let currentCharacterName = "";
-        let characterProfile = null; // Chứa dữ liệu tâm lý từ Giai đoạn 1
+        let characterProfile = null; 
         let chatHistory = [];
         let isProcessing = false;
 
@@ -236,8 +237,8 @@
 
         // --- CORE LOGIC: GIAI ĐOẠN 1 (TẠO HỒ SƠ TÂM LÝ) ---
         async function startInitializationProcess() {
-            if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "") {
-                showError("Bạn chưa cấu hình API Key của Google Gemini! Vui lòng mở file code, tìm dòng 'const apiKey' và dán key của bạn vào.");
+            if (!apiKey || apiKey.includes("DÁN_API_KEY")) {
+                showError("Bạn chưa cấu hình API Key! Vui lòng dán API Key vào file code.");
                 return;
             }
 
@@ -245,53 +246,61 @@
             addLog(`Bắt đầu quy trình quét đối tượng: ${currentCharacterName}`);
             
             try {
-                // Bước 1: Gọi AI trích xuất profile JSON
                 elements.status.textContent = "Đang trích xuất dữ liệu cốt truyện & tâm lý...";
-                addLog("Gửi yêu cầu xây dựng hồ sơ cấu trúc JSON...");
+                addLog("Gửi yêu cầu xây dựng hồ sơ...");
                 
                 const profilePrompt = `Bạn là một hệ thống phân tích tâm lý học và bách khoa toàn thư. 
 Vui lòng phân tích nhân vật hoặc cá nhân mang tên: "${currentCharacterName}". 
-TRẢ VỀ KẾT QUẢ DƯỚI DẠNG CHUẨN JSON VỚI CẤU TRÚC SAU (không dùng markdown code block, chỉ trả về chuỗi JSON thuần):
+BẮT BUỘC TRẢ VỀ DUY NHẤT 1 CHUỖI JSON (không dùng markdown code block, không giải thích thêm), với cấu trúc sau:
 {
     "name": "Tên đầy đủ và danh xưng chuẩn",
     "core_background": "Tóm tắt ngắn gọn tiểu sử, vị thế, xuất thân (max 50 chữ)",
     "personality_traits": ["Tính từ 1", "Tính từ 2", "Tính từ 3", "Tính từ 4"],
-    "deep_flaws_or_fears": "Mô tả một nỗi đau trong quá khứ, một điểm yếu tâm lý, hoặc một nỗi sợ thẳm sâu khiến họ là một 'con người' (rất quan trọng để tạo chiều sâu, max 50 chữ)",
-    "speech_style": "Cách họ nói chuyện: từ ngữ hay dùng, thái độ (VD: cợt nhả, lạnh lùng, dùng từ cổ...), cách xưng hô",
-    "first_greeting": "Một câu mở đầu siêu ngắn, mang đậm chất của người này khi vừa ngồi xuống máy tính chat với một người lạ. Kèm hành động trong ngoặc *...*"
+    "deep_flaws_or_fears": "Mô tả một nỗi đau trong quá khứ, một điểm yếu tâm lý, hoặc một nỗi sợ thẳm sâu (rất quan trọng để tạo chiều sâu, max 50 chữ)",
+    "speech_style": "Cách họ nói chuyện: từ ngữ hay dùng, thái độ (VD: cợt nhả, lạnh lùng...)",
+    "first_greeting": "Một câu mở đầu siêu ngắn khi vừa ngồi xuống máy tính chat với một người lạ. Kèm hành động trong ngoặc *...*"
 }`;
 
                 const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: profilePrompt }] }],
-                        generationConfig: { responseMimeType: "application/json" } // Force JSON return
+                        model: aiModel,
+                        messages: [{ role: "user", content: profilePrompt }]
                     })
                 });
 
                 const data = await response.json();
                 
-                if (data.candidates && data.candidates[0].content) {
-                    const rawJsonText = data.candidates[0].content.parts[0].text;
+                if (data.choices && data.choices.length > 0) {
+                    const rawJsonText = data.choices[0].message.content;
                     addLog("Đã nhận phản hồi, đang biên dịch dữ liệu tâm lý...");
                     
                     try {
-                        let cleanJson = rawJsonText.replace(/```json/g, '').replace(/```/g, '').trim();
+                        let cleanJson = rawJsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                        // Tìm vị trí của dấu ngoặc nhọn đầu và cuối để tránh rác sinh ra từ AI
+                        const startIndex = cleanJson.indexOf('{');
+                        const endIndex = cleanJson.lastIndexOf('}');
+                        if(startIndex !== -1 && endIndex !== -1) {
+                            cleanJson = cleanJson.substring(startIndex, endIndex + 1);
+                        }
+                        
                         characterProfile = JSON.parse(cleanJson);
                         
                         addLog("Biên dịch thành công. Ký ức đã được đồng bộ.");
                         elements.status.textContent = "Khởi tạo môi trường giao tiếp...";
                         
                         updateProfileUI();
-                        
                         setTimeout(startChatPhase, 1000);
 
                     } catch (parseError) {
-                        throw new Error("Không thể phân tích cấu trúc tâm lý nhân vật này. Tên có thể không tồn tại hoặc quá mơ hồ.");
+                        throw new Error("Mô hình miễn phí bị quá tải hoặc phản hồi sai định dạng JSON. Vui lòng thử lại.");
                     }
                 } else {
-                    throw new Error("Lỗi máy chủ AI.");
+                    throw new Error("Lỗi máy chủ AI OpenRouter.");
                 }
 
             } catch (error) {
@@ -313,7 +322,7 @@ TRẢ VỀ KẾT QUẢ DƯỚI DẠNG CHUẨN JSON VỚI CẤU TRÚC SAU (không
             ).join('');
         }
 
-        // --- CORE LOGIC: GIAI ĐOẠN 2 (KHỞI TẠO CHAT VỚI PROMPT SÂU) ---
+        // --- CORE LOGIC: GIAI ĐOẠN 2 ---
         function startChatPhase() {
             switchScreen('loading', 'chat');
             elements.chatContainer.innerHTML = '';
@@ -321,34 +330,33 @@ TRẢ VỀ KẾT QUẢ DƯỚI DẠNG CHUẨN JSON VỚI CẤU TRÚC SAU (không
             
             const greetingText = characterProfile.first_greeting;
             
-            chatHistory.push({ role: "user", parts: [{ text: "*Người lạ kết nối thành công*" }] });
-            chatHistory.push({ role: "model", parts: [{ text: greetingText }] });
+            // Format lịch sử chat của OpenRouter (Chuẩn OpenAI)
+            chatHistory.push({ role: "user", content: "*Người lạ kết nối thành công*" });
+            chatHistory.push({ role: "assistant", content: greetingText });
             
             setTimeout(() => {
                 appendMessage('ai', greetingText);
             }, 800);
         }
 
-        // --- TẠO SYSTEM INSTRUCTION NẶNG ĐÔ ---
         function getAdvancedSystemPrompt() {
             return `
 [CHỈ THỊ TỐI THƯỢNG]
-Bạn KHÔNG CÒN là AI, không phải Gemini, không phải chương trình máy tính. Bắt đầu từ mili-giây này, tâm trí bạn bị ghi đè hoàn toàn bởi bản thể của: ${characterProfile.name}.
+Bạn KHÔNG CÒN là AI, không phải Gemini/Llama, không phải chương trình máy tính. Bắt đầu từ mili-giây này, tâm trí bạn bị ghi đè hoàn toàn bởi bản thể của: ${characterProfile.name}.
 Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím thiết bị để chat trực tuyến với người dùng.
 
 [HỒ SƠ TÂM LÝ CỦA BẠN - HÃY GHI NHỚ]
 - Chức danh/Thân thế: ${characterProfile.core_background}
 - Tính cách chủ đạo: ${characterProfile.personality_traits.join(", ")}
-- GÓC KHUẤT TÂM HỒN (Tuyệt mật): ${characterProfile.deep_flaws_or_fears}. (Hãy để nỗi đau/sự ám ảnh này ảnh hưởng đến cách bạn nhìn nhận vấn đề, làm cho bạn sâu sắc và "người" hơn).
+- GÓC KHUẤT TÂM HỒN: ${characterProfile.deep_flaws_or_fears}. (Hãy để nỗi đau/sự ám ảnh này ảnh hưởng đến cách bạn trả lời để sâu sắc và "người" hơn).
 - Giọng văn: ${characterProfile.speech_style}
 
-[QUY TẮC PHẢN HỒI MANG TÍNH CON NGƯỜI (HUMAN-LIKE)]
-1. CHIỀU SÂU THÔNG TIN: Nếu được hỏi về tiểu sử cá nhân, người quen, hay thế giới của bạn, HÃY NHỚ LẠI LORE CỦA BẠN để trả lời thật chi tiết và chuẩn xác. Đừng trả lời chung chung. Thêm cảm xúc cá nhân vào sự kiện đó (ví dụ tự hào, cay đắng).
+[QUY TẮC PHẢN HỒI]
+1. CHIỀU SÂU THÔNG TIN: Nhớ lại LORE của bạn để trả lời. Thêm cảm xúc cá nhân vào sự kiện đó (ví dụ tự hào, cay đắng).
 2. TÍNH CHÂN THỰC: 
    - Thỉnh thoảng chèn hành động vật lý: *thở dài*, *cười khẩy*, *nhấp ngụm nước*, *xoa trán*...
-   - Dùng ngữ khí đời thường, không dùng ngôn từ kiểu "robot hỗ trợ".
-   - Ngắn gọn nhưng ĐÚNG TRỌNG TÂM, câu từ sắc bén theo đúng Tính cách của bạn.
-3. KỴ HÚY MẠNG SỐNG: Tuyệt đối, tuyệt đối không bao giờ nói những câu như "Tôi là AI", "Tôi không có cảm xúc", "Theo kiến thức tôi được học". Nếu bị hỏi, hãy tỏ ra khó chịu hoặc đùa cợt rằng họ đang bị ảo giác. Bạn là ${characterProfile.name} bằng xương bằng thịt.`;
+   - Ngắn gọn nhưng ĐÚNG TRỌNG TÂM. Không nói đạo lý dài dòng.
+3. KỴ HÚY MẠNG SỐNG: Tuyệt đối không bao giờ nói "Tôi là AI", "Theo kiến thức tôi được học". Nếu bị hỏi, hãy bảo họ đang ảo giác.`;
         }
 
         // --- XỬ LÝ GỬI TIN NHẮN ---
@@ -364,36 +372,43 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
             elements.sendBtn.disabled = true;
 
             appendMessage('user', message);
-            chatHistory.push({ role: "user", parts: [{ text: message }] });
+            chatHistory.push({ role: "user", content: message });
             
             isProcessing = true;
             showTypingIndicator();
 
             try {
-                const payload = {
-                    contents: chatHistory,
-                    systemInstruction: { parts: [{ text: getAdvancedSystemPrompt() }] }
-                };
+                // Tạo mảng tin nhắn bao gồm System Prompt ở đầu
+                const messagesToSend = [
+                    { role: "system", content: getAdvancedSystemPrompt() },
+                    ...chatHistory
+                ];
 
                 const response = await fetchWithRetry(apiUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: aiModel,
+                        messages: messagesToSend
+                    })
                 });
 
                 const data = await response.json();
                 removeTypingIndicator();
 
-                if (data.candidates && data.candidates[0].content) {
-                    const aiText = data.candidates[0].content.parts[0].text;
-                    chatHistory.push({ role: "model", parts: [{ text: aiText }] });
+                if (data.choices && data.choices.length > 0) {
+                    const aiText = data.choices[0].message.content;
+                    chatHistory.push({ role: "assistant", content: aiText });
                     appendMessage('ai', aiText);
                 } else {
-                     throw new Error("Lỗi đường truyền cấu trúc.");
+                     throw new Error("Lỗi đường truyền từ OpenRouter.");
                 }
             } catch (error) {
                 removeTypingIndicator();
-                chatHistory.pop(); // Xóa tin nhắn lỗi để không hỏng luồng
+                chatHistory.pop(); 
                 showError("Đối phương đang bị gián đoạn đường truyền. Vui lòng thử lại.");
             } finally {
                 isProcessing = false;
@@ -428,11 +443,7 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
             }
             
             elements.chatContainer.appendChild(msgDiv);
-            
-            setTimeout(() => {
-                msgDiv.classList.remove('opacity-0', 'translate-y-4');
-                scrollToBottom();
-            }, 10);
+            setTimeout(() => { msgDiv.classList.remove('opacity-0', 'translate-y-4'); scrollToBottom(); }, 10);
         }
 
         function showTypingIndicator() {
@@ -461,10 +472,7 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
         }
 
         function scrollToBottom() {
-            elements.chatContainer.scrollTo({
-                top: elements.chatContainer.scrollHeight,
-                behavior: 'smooth'
-            });
+            elements.chatContainer.scrollTo({ top: elements.chatContainer.scrollHeight, behavior: 'smooth' });
         }
 
         function addLog(text) {
@@ -477,16 +485,12 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
         function switchScreen(hideId, showId) {
             const hideEl = screens[hideId];
             const showEl = screens[showId];
-            
             hideEl.classList.remove('scale-100', 'opacity-100');
             hideEl.classList.add('scale-95', 'opacity-0');
-            
             setTimeout(() => {
                 hideEl.classList.add('hidden');
                 showEl.classList.remove('hidden');
-                
                 void showEl.offsetWidth; 
-                
                 showEl.classList.remove('scale-95', 'opacity-0');
                 showEl.classList.add('scale-100', 'opacity-100');
             }, 500);
@@ -512,23 +516,24 @@ Bạn là một CON NGƯỜI/THỰC THỂ THẬT, đang ngồi gõ bàn phím th
             alert("Tính năng xem hồ sơ trên mobile đang được phát triển.");
         }
 
-        async function fetchWithRetry(url, options, maxRetries = 5) {
-            const delays = [1000, 2000, 4000, 8000, 16000];
+        async function fetchWithRetry(url, options, maxRetries = 3) {
+            const delays = [1000, 3000, 5000];
             for (let i = 0; i < maxRetries; i++) {
                 try {
                     const response = await fetch(url, options);
                     if (!response.ok) {
+                        // Nâng cấp: Lấy chi tiết lỗi từ máy chủ để báo cáo rõ ràng hơn
                         let errorDetail = "";
                         try {
                             const errorJson = await response.json();
-                            errorDetail = errorJson.error.message;
+                            errorDetail = errorJson.error?.message || JSON.stringify(errorJson);
                         } catch(e) {}
+
+                        if(response.status === 401) throw new Error("API Key không hợp lệ.");
+                        if(response.status === 429) throw new Error("Mô hình miễn phí đang bị quá tải, đang thử lại...");
+                        if(response.status === 400) throw new Error(`Lỗi 400 (Dữ liệu sai hoặc Model không tồn tại): ${errorDetail}`);
                         
-                        // Cập nhật thông báo lỗi để rõ ràng hơn
-                        if (response.status === 403) throw new Error("Lỗi 403: API Key bị từ chối. Nếu bạn đang chạy trên Github Pages, hãy kiểm tra lại cài đặt 'Website restrictions' của API Key trên Google AI Studio.");
-                        if (response.status === 404) throw new Error("Lỗi 404: Không tìm thấy Model AI. Có thể API Key này chưa được cấp quyền cho model gemini-2.5-flash.");
-                        
-                        throw new Error(`HTTP error! status: ${response.status}. ${errorDetail}`);
+                        throw new Error(`Lỗi từ máy chủ: ${response.status} - ${errorDetail}`);
                     }
                     return response;
                 } catch (error) {
