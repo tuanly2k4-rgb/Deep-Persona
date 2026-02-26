@@ -172,11 +172,11 @@
 
     <script>
         // --- API CONFIG ---
-        // BƯỚC QUAN TRỌNG: Hãy điền API Key của bạn vào giữa cặp dấu ngoặc kép bên dưới.
-        const apiKey = "AIzaSyCYrODkS27GeVEv8RhEFiRiFgYoMgDmC6M";
+        // BƯỚC QUAN TRỌNG: HÃY TẠO 1 API KEY MỚI TINH VÀ DÁN VÀO ĐÂY (API CŨ CỦA BẠN ĐANG BỊ LỖI 403 TRÊN GITHUB)
+        const apiKey = "AIzaSyB-NON7813TFLNSB5ER0sEOQ1QgLEfa3Do";
         
-        // ĐÃ NÂNG CẤP LÊN MODEL MỚI NHẤT ĐỂ SỬA LỖI 404: Sử dụng "gemini-2.5-flash"
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        // ĐÃ SỬA LỖI 404: Trở về model "gemini-1.5-flash" (Phiên bản public cực kỳ ổn định, chạy được mọi API Key)
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         // --- STATE ---
         let currentCharacterName = "";
